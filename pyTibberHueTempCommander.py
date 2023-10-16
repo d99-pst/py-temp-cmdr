@@ -126,12 +126,13 @@ def ensurePowerState(device, state):
 syslog.openlog(ident="PyTempCmdr", logoption=syslog.LOG_PID, facility=syslog.LOG_LOCAL0)
 syslog.syslog(syslog.LOG_INFO, "INFO: Startup initiated - Python Tibber Hue Temperature Commander in charge!")
 
-print("\nCheck syslog for all logs after this initial startup info \n\
-Examples:\n\
+print("\nCheck syslog for all logs after this initial startup info\n\n\
+Examples:\n\n\
 sudo tail -f /var/log/syslog | grep PyTempCmdr\n\
-sudo grep PyTempCmdr /var/log/syslog | less -i \n\n\
-Run jobs command and use the correct job id to the disown command \n\
-Example (where job number 1 is to be disowned): \n\
+sudo grep PyTempCmdr /var/log/syslog | grep -i action\n\
+sudo grep PyTempCmdr /var/log/syslog | less -i\n\n\n\
+Run jobs command and use the correct job id to the disown command\n\
+Example (where job number 1 is to be disowned):\n\n\
 ./pyTibberHueTempCommander.py &\n\
 jobs\n\
 disown -h %1\n\n\
