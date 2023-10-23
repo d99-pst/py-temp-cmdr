@@ -72,7 +72,7 @@ def syslogPrice(sessionCost, startTemp, endTemp):
     Input: session cost (float)
     No output
     """
-    syslog.syslog(syslog.LOG_INFO, f"PRICE: Estimated Tibber cost for last power on session is [{round(sessionCost, 2)}] SEK ([{startTemp}] --> [{endTemp}])")
+    syslog.syslog(syslog.LOG_INFO, f"PRICE: Estimated Tibber cost for last power on session is [{round(sessionCost, 2)}] SEK ([{round(startTemp, 1)}] --> [{round(endTemp, 1)}])")
 
 def getTodayAndTomorrowEnergyPrices():
     """
@@ -241,31 +241,31 @@ while True:
     todayHighPercentile = numpy.percentile(currentEnergyPrices[0], highEnergyPricePercentileThreshold)
 
     if currentTemperature < minTemperatureThreshold: # Always turn on the heat if MIN threshold has been reached, regardless of price
-        syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature and price [{currentTemperature}] [{currentEnergyPrice}] | Temperature is lower than absolute min threshold [{minTemperatureThreshold}]")
+        syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature and price [{round(currentTemperature, 1)}] [{round(currentEnergyPrice, 2)}] | Temperature is lower than absolute min threshold [{minTemperatureThreshold}]")
         ensurePowerState(philipsHuePlugName, True, thisPowerSession, currentEnergyPrice, currentTemperature)
     elif currentTemperature > maxTemperatureThreshold: # Otherwise, always turn off the heat if MAX threshold has been reached, regardless of price
-        syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature and price [{currentTemperature}] [{currentEnergyPrice}] | Temperature is higher than absolute max threshold [{maxTemperatureThreshold}]")
+        syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature and price [{round(currentTemperature, 1)}] [{round(currentEnergyPrice, 2)}] | Temperature is higher than absolute max threshold [{maxTemperatureThreshold}]")
         ensurePowerState(philipsHuePlugName, False, thisPowerSession, currentEnergyPrice, currentTemperature)
     elif currentEnergyPrice < todayLowPercentile: # Otherwise, always turn on the heat if price is below the low percentile threshold, regardless of temperature
-        syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature and price [{currentTemperature}] [{currentEnergyPrice}] | Current price [{currentEnergyPrice}] is lower than today's {lowEnergyPricePercentileThreshold}th percentile [{todayLowPercentile}]")
+        syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature and price [{round(currentTemperature, 1)}] [{round(currentEnergyPrice, 2)}] | Current price [{round(currentEnergyPrice, 2)}] is lower than today's {lowEnergyPricePercentileThreshold}th percentile [{round(todayLowPercentile, 3)}]")
         ensurePowerState(philipsHuePlugName, True, thisPowerSession, currentEnergyPrice, currentTemperature)
     elif currentEnergyPrice > todayHighPercentile: # Otherwise, always turn off the heat if price is above high percentile threshold, regardless of temperature
-        syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature and price [{currentTemperature}] [{currentEnergyPrice}] | Current price [{currentEnergyPrice}] is higher than today's {highEnergyPricePercentileThreshold}th percentile [{todayHighPercentile}]")
+        syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature and price [{round(currentTemperature, 1)}] [{round(currentEnergyPrice, 2)}] | Current price [{round(currentEnergyPrice, 2)}] is higher than today's {highEnergyPricePercentileThreshold}th percentile [{round(todayHighPercentile, 3)}]")
         ensurePowerState(philipsHuePlugName, False, thisPowerSession, currentEnergyPrice, currentTemperature)
     elif currentTemperature < normalMinTemperatureThreshold: # Otherwise, always turn on the heat if the normal threshold has been reached, regardless of price
-        syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature and price [{currentTemperature}] [{currentEnergyPrice}] | Temperature is lower than normal min threshold [{normalMinTemperatureThreshold}]")
+        syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature and price [{round(currentTemperature, 1)}] [{round(currentEnergyPrice, 2)}] | Temperature is lower than normal min threshold [{normalMinTemperatureThreshold}]")
         ensurePowerState(philipsHuePlugName, True, thisPowerSession, currentEnergyPrice, currentTemperature)
     elif currentTemperature > normalMaxTemperatureThreshold: # Otherwise, always turn off the heat if the normal threshold has been reached, regardless of price
-        syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature and price [{currentTemperature}] [{currentEnergyPrice}] | Temperature is higher than normal max threshold [{normalMaxTemperatureThreshold}]")
+        syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature and price [{round(currentTemperature, 1)}] [{round(currentEnergyPrice, 2)}] | Temperature is higher than normal max threshold [{normalMaxTemperatureThreshold}]")
         ensurePowerState(philipsHuePlugName, False, thisPowerSession, currentEnergyPrice, currentTemperature)
     elif currentEnergyPrice < nextEnergyPrice: # Inside normal temperature range and normal price range --> Short-term greedy decision based on price right now versus next hour
-        syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature and price [{currentTemperature}] [{currentEnergyPrice}] | Normal ranges and current price [{currentEnergyPrice}] is lower than next hour's price [{nextEnergyPrice}]")
+        syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature and price [{round(currentTemperature, 1)}] [{round(currentEnergyPrice, 2)}] | Normal ranges and current price [{round(currentEnergyPrice, 2)}] is lower than next hour's price [{round(nextEnergyPrice, 3)}]")
         ensurePowerState(philipsHuePlugName, True, thisPowerSession, currentEnergyPrice, currentTemperature)
     elif currentEnergyPrice > nextEnergyPrice: # Other half of the greedy decision inside normal temperature range and normal price range
-        syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature and price [{currentTemperature}] [{currentEnergyPrice}] | Normal ranges and current price [{currentEnergyPrice}] is higher than next hour's price [{nextEnergyPrice}]")
+        syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature and price [{round(currentTemperature, 1)}] [{round(currentEnergyPrice, 2)}] | Normal ranges and current price [{round(currentEnergyPrice, 2)}] is higher than next hour's price [{round(nextEnergyPrice, 3)}]")
         ensurePowerState(philipsHuePlugName, False, thisPowerSession, currentEnergyPrice, currentTemperature)
     else:
-        syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature [{currentTemperature}]")
+        syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature [{round(currentTemperature, 1)}]")
         ensurePowerState(philipsHuePlugName, False, thisPowerSession, currentEnergyPrice, currentTemperature)
 
     if fetchNewEnergyPrices == True:
