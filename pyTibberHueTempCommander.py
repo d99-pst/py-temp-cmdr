@@ -35,16 +35,42 @@ from phue import Bridge
 # Global variables for your infrastructure and price aggressiveness apetite
 tibberAuthToken = "generateYourTokenInPhilipsHueBridgeAndPasteHere" # E.g.: "njfzEM5Fh1XrzrhI2cbwfuLgmB0fQndjoDY02jLtWSJ"
 philipsHueBridgeAddress = "192.168.0.2" # E.g.: "192.168.13.37"
-philipsHueSensorName = "Hue temperature sensor 2" # E.g.: "Hue temperature sensor 1" (Each motion sensor paired with Bridge gets sequence numbered sensor name. If you rename in HUE app, only the motion sensor sensor gets renamed. The temperature sensor remains sequence numbere name like this in the same sequence number as the motion sensor.)
 philipsHuePlugName = "Garage plug 1" # E.g.: "Garage plug 1"
+philipsHueSensorName = "Hue temperature sensor 2" # E.g.: "Hue temperature sensor 1" (Each motion sensor paired with Bridge gets sequence numbered sensor name. If you rename in HUE app, only the motion sensor sensor gets renamed. The temperature sensor remains sequence numbere name like this in the same sequence number as the motion sensor.)
 minTemperatureThreshold = 2 # Degrees Celcius (e.g. 2)
 maxTemperatureThreshold = 10 # Degrees Celcius (e.g. 10)
 normalMinTemperatureThreshold = 4 # Degrees Celcius (e.g. 4)
 normalMaxTemperatureThreshold = 7 # Degrees Celcius (e.g. 7)
 lowEnergyPricePercentileThreshold = 15 # Which percentile to switch from normal thermostat range to the min/max extremes when price is cheap (e.g. 15)
 highEnergyPricePercentileThreshold = 70 # Which percentile to switch from normal thermostat range to the min/max extremes when price is expensive (e.g. 70)
+radiatorPower = 1250 # Power in W for how much your radiator in the smart plug generates (e.g. 1250 for 1,25kW)
 
 
+
+class PowerSession:
+    """
+    Object with variables needed to estimate Tibber cost for a session with power on
+    """
+    def __init__(self, powerOnTime, powerOffTime, powerOnPrice, powerOffPrice):
+        self.powerOnTime = powerOnTime
+        self.powerOffTime = powerOffTime
+        self.powerOnPrice = powerOnPrice
+        self.powerOffPrice = powerOffPrice
+
+def estimateCost(seconds, price):
+    """
+    Input: Time (s), Price (SEK per kWh)
+    Output: Cost (SEK)
+    """
+    return seconds / 3600 * radiatorPower / 1000 * price
+
+def syslogPrice(sessionCost):
+    """
+    Prints rounded price to syslog
+    Input: session cost (float)
+    No output
+    """
+    syslog.syslog(syslog.LOG_INFO, f"PRICE: Estimated Tibber cost for last power on session is [{round(sessionCost, 2)}] SEK")
 
 def getTodayAndTomorrowEnergyPrices():
     """
@@ -95,21 +121,43 @@ def getTemperature(device):
         syslog.syslog(syslog.LOG_ERR, f"ERROR: An unexpected error occurred connecting to the Philips Hue bridge: {e}")
         return None
 
-def ensurePowerState(device, state):
+def ensurePowerState(device, state, thisPowerSession, currentEnergyPrice):
     """
     Ensures provided power state on the provided Philips HUE smart plug (that is accessible via the lamp functions). 
-    Input: String (name (case sensitive) of HUE sensor, Boolean (True = set to on, False = set to off)
+    Input: String (name (case sensitive) of HUE sensor, Boolean (True = set to on, False = set to off), PowerSession (object of class), Double (current energy price)
     No output
     """
-    if isinstance(device, str) and isinstance(state, bool):
+    if isinstance(device, str) and isinstance(state, bool) and isinstance(thisPowerSession, PowerSession) and isinstance(currentEnergyPrice, (int, float)):
         try:
             hueBridge = Bridge(philipsHueBridgeAddress)
             currentPowerState = hueBridge.get_light(int(hueBridge.get_light_id_by_name(device)), "on")
             if currentPowerState != state:
                 hueBridge.set_light(int(hueBridge.get_light_id_by_name(device)), "on", state)
-                syslog.syslog(syslog.LOG_INFO, f"INFO: ACTION - Device = [{device}] - Changed power state to [{state}]")
+                syslog.syslog(syslog.LOG_INFO, f"ACTION: Device = [{device}] - Changed power state to [{state}]")
                 if state == True:
-                    time.sleep(600) # Prevent equipment to flicker on/off too frequently
+                    thisPowerSession.powerOnTime = datetime.now()
+                    thisPowerSession.powerOnPrice = currentEnergyPrice
+                else:
+                    thisPowerSession.powerOffTime = datetime.now()
+                    thisPowerSession.powerOffPrice = currentEnergyPrice
+                    sessionCost = 0
+                    if thisPowerSession.powerOnTime != datetime.fromtimestamp(0):
+                        if thisPowerSession.powerOnTime.hour == thisPowerSession.powerOffTime.hour:
+                            elapsedSeconds = (thisPowerSession.powerOffTime - thisPowerSession.powerOnTime).total_seconds()
+                            sessionCost = estimateCost(elapsedSeconds, thisPowerSession.powerOffPrice)
+                        elif thisPowerSession.powerOffTime.hour - thisPowerSession.powerOnTime.hour == 1 or thisPowerSession.powerOffTime.hour - thisPowerSession.powerOnTime.hour == -23:
+                            interimTimestamp = datetime(thisPowerSession.powerOffTime.year, thisPowerSession.powerOffTime.month, thisPowerSession.powerOffTime.day, thisPowerSession.powerOffTime.hour, 0, 0)
+                            elapsedSecondsFirst = (interimTimestamp - thisPowerSession.powerOnTime).total_seconds()
+                            elapsedSecondsSecond = (thisPowerSession.powerOffTime - interimTimestamp).total_seconds()
+                            sessionCostFirst = estimateCost(elapsedSecondsFirst, thisPowerSession.powerOnPrice)
+                            sessionCostSecond = estimateCost(elapsedSecondsSecond, thisPowerSession.powerOffPrice)
+                            sessionCost = sessionCostFirst + sessionCostSecond
+                        else:
+                            elapsedSeconds = (thisPowerSession.powerOffTime - thisPowerSession.powerOnTime).total_seconds()
+                            naivelyEstimatedPrice = (thisPowerSession.powerOffPrice + thisPowerSession.powerOnPrice) / 2
+                            sessionCost = estimateCost(elapsedSeconds, naivelyEstimatedPrice)
+                        syslogPrice(sessionCost)
+                time.sleep(450) # Prevent equipment to flicker on/off too frequently
 
         except ConnectionError as e:
             syslog.syslog(syslog.LOG_ERR, f"ERROR: Failed connecting to the Philips Hue bridge: {e}")
@@ -147,13 +195,14 @@ for i in range(2):
 
 priceState = 0 # 0 = never fetched, 1 = only info about today's prices, 2 = info of both today's and tomorrow's prices
 lastPriceRun = datetime.fromtimestamp(0)
+thisPowerSession = PowerSession(datetime.fromtimestamp(0), datetime.fromtimestamp(0), 0, 0)
 
-skipSleepOnce = True
+skipSleep = 0
 while True:
-    if skipSleepOnce == True:
-        skipSleepOnce = False # Startup performance
+    if skipSleep < 2:
+        skipSleep += 1 # Startup performance
     else:
-        time.sleep(47) # Ensure sleep every iteration of while loop, sleep first action in loop (e.g. if continue in the middle of the loop)
+        time.sleep(151) # Ensure sleep every iteration of while loop, sleep first action in loop (e.g. if continue in the middle of the loop)
     
     currentTime = datetime.now()
     currentDate = currentTime.date()
@@ -188,28 +237,31 @@ while True:
 
     if currentTemperature < minTemperatureThreshold: # Always turn on the heat if MIN threshold has been reached, regardless of price
         syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature [{currentTemperature}] | Temperature is lower than absolute min threshold [{minTemperatureThreshold}]")
-        ensurePowerState(philipsHuePlugName, True)
+        ensurePowerState(philipsHuePlugName, True, thisPowerSession, currentEnergyPrice)
     elif currentTemperature > maxTemperatureThreshold: # Otherwise, always turn off the heat if MAX threshold has been reached, regardless of price
         syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature [{currentTemperature}] | Temperature is higher than absolute max threshold [{maxTemperatureThreshold}]")
-        ensurePowerState(philipsHuePlugName, False)
+        ensurePowerState(philipsHuePlugName, False, thisPowerSession, currentEnergyPrice)
     elif currentEnergyPrice < todayLowPercentile: # Otherwise, always turn on the heat if price is below the low percentile threshold, regardless of temperature
         syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature [{currentTemperature}] | Current price [{currentEnergyPrice}] is lower than today's {lowEnergyPricePercentileThreshold}th percentile [{todayLowPercentile}]")
-        ensurePowerState(philipsHuePlugName, True)
+        ensurePowerState(philipsHuePlugName, True, thisPowerSession, currentEnergyPrice)
     elif currentEnergyPrice > todayHighPercentile: # Otherwise, always turn off the heat if price is above high percentile threshold, regardless of temperature
         syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature [{currentTemperature}] | Current price [{currentEnergyPrice}] is higher than today's {highEnergyPricePercentileThreshold}th percentile [{todayHighPercentile}]")
-        ensurePowerState(philipsHuePlugName, False)
+        ensurePowerState(philipsHuePlugName, False, thisPowerSession, currentEnergyPrice)
     elif currentTemperature < normalMinTemperatureThreshold: # Otherwise, always turn on the heat if the normal threshold has been reached, regardless of price
         syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature [{currentTemperature}] | Temperature is lower than normal min threshold [{normalMinTemperatureThreshold}]")
-        ensurePowerState(philipsHuePlugName, True)
+        ensurePowerState(philipsHuePlugName, True, thisPowerSession, currentEnergyPrice)
     elif currentTemperature > normalMaxTemperatureThreshold: # Otherwise, always turn off the heat if the normal threshold has been reached, regardless of price
         syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature [{currentTemperature}] | Temperature is higher than normal max threshold [{normalMaxTemperatureThreshold}]")
-        ensurePowerState(philipsHuePlugName, False)
+        ensurePowerState(philipsHuePlugName, False, thisPowerSession, currentEnergyPrice)
     elif currentEnergyPrice < nextEnergyPrice: # Inside normal temperature range and normal price range --> Short-term greedy decision based on price right now versus next hour
         syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature [{currentTemperature}] | Normal ranges and current price [{currentEnergyPrice}] is lower than next hour's price [{nextEnergyPrice}]")
-        ensurePowerState(philipsHuePlugName, True)
+        ensurePowerState(philipsHuePlugName, True, thisPowerSession, currentEnergyPrice)
     elif currentEnergyPrice > nextEnergyPrice: # Other half of the greedy decision inside normal temperature range and normal price range
         syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature [{currentTemperature}] | Normal ranges and current price [{currentEnergyPrice}] is higher than next hour's price [{nextEnergyPrice}]")
-        ensurePowerState(philipsHuePlugName, False)
+        ensurePowerState(philipsHuePlugName, False, thisPowerSession, currentEnergyPrice)
+    else:
+        syslog.syslog(syslog.LOG_INFO, f"INFO: Current temperature [{currentTemperature}]")
+        ensurePowerState(philipsHuePlugName, False, thisPowerSession, currentEnergyPrice)
 
     if fetchNewEnergyPrices == True:
         try:
