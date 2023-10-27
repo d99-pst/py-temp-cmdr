@@ -72,7 +72,7 @@ def syslogPrice(sessionCost, startTemp, endTemp, duration):
     Input: float (session cost), start temp (float), end temp (float), duration (String)
     No output
     """
-    syslog.syslog(syslog.LOG_INFO, f"PRICE: Estimated Tibber cost for last power on session is [{round(sessionCost, 2)}] SEK ([{round(startTemp, 1)}] --> [{round(endTemp, 1)}] | {duration})")
+    syslog.syslog(syslog.LOG_INFO, f"PRICE: Estimated Tibber cost for last power on session is [{round(sessionCost, 2)}] SEK ([{round(startTemp, 1)}] --> [{round(endTemp, 1)}] | [{duration}])")
 
 def getTodayAndTomorrowEnergyPrices():
     """
