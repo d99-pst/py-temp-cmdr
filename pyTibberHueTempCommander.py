@@ -66,13 +66,13 @@ def estimateCost(seconds, price):
     """
     return seconds / 3600 * radiatorPower / 1000 * price
 
-def syslogPrice(sessionCost, startTemp, endTemp):
+def syslogPrice(sessionCost, startTemp, endTemp, duration):
     """
     Prints rounded price to syslog
-    Input: session cost (float)
+    Input: float (session cost), start temp (float), end temp (float), duration (String)
     No output
     """
-    syslog.syslog(syslog.LOG_INFO, f"PRICE: Estimated Tibber cost for last power on session is [{round(sessionCost, 2)}] SEK ([{round(startTemp, 1)}] --> [{round(endTemp, 1)}])")
+    syslog.syslog(syslog.LOG_INFO, f"PRICE: Estimated Tibber cost for last power on session is [{round(sessionCost, 2)}] SEK ([{round(startTemp, 1)}] --> [{round(endTemp, 1)}] | {duration})")
 
 def getTodayAndTomorrowEnergyPrices():
     """
@@ -145,10 +145,13 @@ def ensurePowerState(device, state, thisPowerSession, currentEnergyPrice, curren
                     thisPowerSession.powerOffTime = datetime.now()
                     thisPowerSession.powerOffPrice = currentEnergyPrice
                     thisPowerSession.endTemp = currentTemperature
+                    elapsedSeconds = (thisPowerSession.powerOffTime - thisPowerSession.powerOnTime).total_seconds()
+                    formatHours, formatSeconds = divmod(elapsedSeconds, 3600)
+                    formatMinutes, formatSeconds = divmod(formatSeconds, 60)
+                    elapsedTimeFormatted = f"{str(round(formatHours)).zfill(2)}:{str(round(formatMinutes)).zfill(2)}:{str(round(formatSeconds)).zfill(2)}"
                     sessionCost = 0
                     if thisPowerSession.powerOnTime != datetime.fromtimestamp(0):
                         if thisPowerSession.powerOnTime.hour == thisPowerSession.powerOffTime.hour:
-                            elapsedSeconds = (thisPowerSession.powerOffTime - thisPowerSession.powerOnTime).total_seconds()
                             sessionCost = estimateCost(elapsedSeconds, thisPowerSession.powerOffPrice)
                         elif thisPowerSession.powerOffTime.hour - thisPowerSession.powerOnTime.hour == 1 or thisPowerSession.powerOffTime.hour - thisPowerSession.powerOnTime.hour == -23:
                             interimTimestamp = datetime(thisPowerSession.powerOffTime.year, thisPowerSession.powerOffTime.month, thisPowerSession.powerOffTime.day, thisPowerSession.powerOffTime.hour, 0, 0)
@@ -158,10 +161,9 @@ def ensurePowerState(device, state, thisPowerSession, currentEnergyPrice, curren
                             sessionCostSecond = estimateCost(elapsedSecondsSecond, thisPowerSession.powerOffPrice)
                             sessionCost = sessionCostFirst + sessionCostSecond
                         else:
-                            elapsedSeconds = (thisPowerSession.powerOffTime - thisPowerSession.powerOnTime).total_seconds()
                             naivelyEstimatedPrice = (thisPowerSession.powerOffPrice + thisPowerSession.powerOnPrice) / 2
                             sessionCost = estimateCost(elapsedSeconds, naivelyEstimatedPrice)
-                        syslogPrice(sessionCost, thisPowerSession.startTemp, thisPowerSession.endTemp)
+                        syslogPrice(sessionCost, thisPowerSession.startTemp, thisPowerSession.endTemp, elapsedTimeFormatted)
                 time.sleep(450) # Prevent equipment to flicker on/off too frequently
 
         except ConnectionError as e:
