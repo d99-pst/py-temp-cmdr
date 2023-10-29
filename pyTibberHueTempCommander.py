@@ -200,7 +200,7 @@ for i in range(2):
     for j in range(24):
         currentEnergyPrices[i].append(0)
 
-priceState = 0 # 0 = never fetched, 1 = only info about today's prices, 2 = info of both today's and tomorrow's prices
+priceState = 0 # 0 = never fetched or Daylight Savings, 1 = only info about today's prices, 2 = info of both today's and tomorrow's prices
 lastPriceRun = datetime.fromtimestamp(0)
 thisPowerSession = PowerSession(datetime.fromtimestamp(0), datetime.fromtimestamp(0), 0, 0, 0, 0)
 
@@ -222,7 +222,7 @@ while True:
         syslog.syslog(syslog.LOG_ERR, "ERROR: Could not fetch temperature, skipping rest of logic for this while loop iteration (i.e. no action taken)")
         continue
 
-    if priceState == 0: # init state (first time in the while loop when script is executed, this is the state)
+    if priceState == 0: # init state (first time in the while loop or if daylight savings scenario)
         fetchNewEnergyPrices = True
 
     if priceState == 2 and currentDate > lastPriceRunDate: # time for switcheru (bubble tomorrow's prices into today's prices (first time in while loop after midnight))
@@ -303,6 +303,7 @@ while True:
                     backoffSleep = 600
                     syslog.syslog(syslog.LOG_ERR, f"ERROR: A scenario of Daylight savings occurred that is not yet supported by this app. This will resolve itself automatically on Monday. To avoid using Tibber's API too often, this app now pauses for {backoffSleep}s. Temperature control is now performed by either only using ABS MAX/MIN thresholds or by using yesterday's prices incorrectly.")
                     time.sleep(backoffSleep) # Avoid hammering Tibber's API
+                    priceState = 0
                     continue
 
                 priceArrayPopulated = False
