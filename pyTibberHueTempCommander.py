@@ -20,6 +20,7 @@
 # python3 -m pip install numpy
 #
 # No timezone support (assumes local time on runtime environment is the same as response from Tibber's API)
+# Known bug: If Daylight Savings and Tibber responds with either 23 or 25 prices, prices can't be used correctly that day
 
 import inspect
 import json
@@ -44,7 +45,6 @@ normalMaxTemperatureThreshold = 7 # Degrees Celcius (e.g. 7)
 lowEnergyPricePercentileThreshold = 15 # Which percentile to switch from normal thermostat range to the min/max extremes when price is cheap (e.g. 15)
 highEnergyPricePercentileThreshold = 70 # Which percentile to switch from normal thermostat range to the min/max extremes when price is expensive (e.g. 70)
 radiatorPower = 1250 # Power in W for how much your radiator in the smart plug generates (e.g. 1250 for 1,25kW)
-
 
 
 class PowerSession:
@@ -277,14 +277,32 @@ while True:
             if isinstance(priceInfo, dict) and len(priceInfo) == 2:
                 today = priceInfo["today"]
                 tomorrow = priceInfo["tomorrow"]
-
+                daylightSavingsState = False
                 thisObjects = [] # ensure this variable is initialized in case both expected scenarios fail prior to the for loop
                 if isinstance(today, list) and isinstance(tomorrow, list) and len(today) == 24 and len(tomorrow) == 24:
                     thisObjects = [today, tomorrow]
+                elif isinstance(today, list) and isinstance(tomorrow, list) and len(today) == 24 and len(tomorrow) == 23:
+                    thisObjects = [today]
+                elif isinstance(today, list) and isinstance(tomorrow, list) and len(today) == 24 and len(tomorrow) == 25:
+                    thisObjects = [today]
+                elif isinstance(today, list) and isinstance(tomorrow, list) and len(today) == 23 and len(tomorrow) == 24:
+                    daylightSavingsState = True
+                elif isinstance(today, list) and isinstance(tomorrow, list) and len(today) == 25 and len(tomorrow) == 24:
+                    daylightSavingsState = True
                 elif isinstance(today, list) and len(today) == 24:
                     thisObjects = [today]
+                elif isinstance(today, list) and len(today) == 23:
+                    daylightSavingsState = True
+                elif isinstance(today, list) and len(today) == 25:
+                    daylightSavingsState = True
                 else:
                     syslog.syslog(syslog.LOG_ERR, "ERROR: Could not parse energy prices this wile loop iteration (today/tomorrow validation (i.e. no action taken))")
+                    continue
+
+                if daylightSavingsState == True:
+                    backoffSleep = 600
+                    syslog.syslog(syslog.LOG_ERR, f"ERROR: A scenario of Daylight savings occurred that is not yet supported by this app. This will resolve itself automatically on Monday. To avoid using Tibber's API too often, this app now pauses for {backoffSleep}s. Temperature control is now performed by either only using ABS MAX/MIN thresholds or by using yesterday's prices incorrectly.")
+                    time.sleep(backoffSleep) # Avoid hammering Tibber's API
                     continue
 
                 priceArrayPopulated = False
