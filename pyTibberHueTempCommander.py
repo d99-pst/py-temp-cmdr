@@ -63,10 +63,10 @@ class PowerDailyStatistics:
     """
     Object with variables needed to gather daily statistics
     """
-    def __init__(self, date, accruedPoweronSeconds, accruedCost):
+    def __init__(self, date, accumulatedPoweronSeconds, accumulatedCost):
         self.date = date
-        self.accruedPoweronSeconds = accruedPoweronSeconds
-        self.accruedCost = accruedCost
+        self.accumulatedPoweronSeconds = accumulatedPoweronSeconds
+        self.accumulatedCost = accumulatedCost
 
 def estimateCost(seconds, price):
     """
@@ -99,7 +99,7 @@ def syslogStats(thisDailyStats):
     Input: the object with daily statistics
     No output
     """
-    syslog.syslog(syslog.LOG_INFO, f"STATS: Yesterday [{thisDailyStats.date}] | Powered on duration was [{formatSecondsToLogFormat(thisDailyStats.accruedPoweronSeconds)}] | Estimated Tibber cost is [{round(thisDailyStats.accruedCost, 2)}] SEK")
+    syslog.syslog(syslog.LOG_INFO, f"STATS: Yesterday [{thisDailyStats.date}] | Powered on duration was [{formatSecondsToLogFormat(thisDailyStats.accumulatedPoweronSeconds)}] | Estimated Tibber cost is [{round(thisDailyStats.accumulatedCost, 2)}] SEK")
 
 def getTodayAndTomorrowEnergyPrices():
     """
@@ -189,8 +189,8 @@ def ensurePowerState(device, state, thisPowerSession, currentEnergyPrice, curren
                             naivelyEstimatedPrice = (thisPowerSession.powerOffPrice + thisPowerSession.powerOnPrice) / 2
                             sessionCost = estimateCost(elapsedSeconds, naivelyEstimatedPrice)
                         syslogPrice(sessionCost, thisPowerSession.startTemp, thisPowerSession.endTemp, elapsedTimeFormatted)
-                        thisDailyStats.accruedPoweronSeconds += elapsedSeconds
-                        thisDailyStats.accruedCost += sessionCost
+                        thisDailyStats.accumulatedPoweronSeconds += elapsedSeconds
+                        thisDailyStats.accumulatedCost += sessionCost
                 time.sleep(450) # Prevent equipment to flicker on/off too frequently
 
         except ConnectionError as e:
@@ -248,8 +248,8 @@ while True:
     if currentDate > thisDailyStats.date:
         syslogStats(thisDailyStats)
         thisDailyStats.date = currentDate
-        thisDailyStats.accruedCost = 0
-        thisDailyStats.accruedPoweronSeconds = 0
+        thisDailyStats.accumulatedCost = 0
+        thisDailyStats.accumulatedPoweronSeconds = 0
 
     currentTemperature = getTemperature(philipsHueSensorName)
     if currentTemperature is None:
