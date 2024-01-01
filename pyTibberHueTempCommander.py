@@ -63,10 +63,11 @@ class PowerDailyStatistics:
     """
     Object with variables needed to gather daily statistics
     """
-    def __init__(self, date, accumulatedPoweronSeconds, accumulatedCost):
+    def __init__(self, date, accumulatedPoweronSeconds, accumulatedCost, accumulatedEnergy):
         self.date = date
         self.accumulatedPoweronSeconds = accumulatedPoweronSeconds
         self.accumulatedCost = accumulatedCost
+        self.accumulatedEnergy = accumulatedEnergy
 
 def estimateCost(seconds, price):
     """
@@ -99,7 +100,7 @@ def syslogStats(thisDailyStats):
     Input: the object with daily statistics
     No output
     """
-    syslog.syslog(syslog.LOG_INFO, f"STATS: Yesterday [{thisDailyStats.date}] | Powered on duration was [{formatSecondsToLogFormat(thisDailyStats.accumulatedPoweronSeconds)}] | Estimated Tibber cost is [{round(thisDailyStats.accumulatedCost, 2)}] SEK")
+    syslog.syslog(syslog.LOG_INFO, f"STATS: Yesterday [{thisDailyStats.date}] | Powered on duration was [{formatSecondsToLogFormat(thisDailyStats.accumulatedPoweronSeconds)}] | Estimated Tibber cost is [{round(thisDailyStats.accumulatedCost, 2)}] SEK | Estimated energy use is [{round(thisDailyStats.accumulatedEnergy, 3)}] kWh | Estimated average price is [{round(thisDailyStats.accumulatedCost / thisDailyStats.accumulatedEnergy, 2)}] SEK/kWh")
 
 def getTodayAndTomorrowEnergyPrices():
     """
@@ -191,6 +192,7 @@ def ensurePowerState(device, state, thisPowerSession, currentEnergyPrice, curren
                         syslogPrice(sessionCost, thisPowerSession.startTemp, thisPowerSession.endTemp, elapsedTimeFormatted)
                         thisDailyStats.accumulatedPoweronSeconds += elapsedSeconds
                         thisDailyStats.accumulatedCost += sessionCost
+                        thisDailyStats.accumulatedEnergy += (radiatorPower * elapsedSeconds / 1000 / 3600) # power (W), time (s) (convert Ws to kWh)
                 time.sleep(450) # Prevent equipment to flicker on/off too frequently
 
         except ConnectionError as e:
@@ -230,7 +232,7 @@ for i in range(2):
 priceState = 0 # 0 = never fetched, 1 = only info about today's prices, 2 = info of both today's and tomorrow's prices, 3 = Daylight Savings
 lastPriceRun = datetime.fromtimestamp(0)
 thisPowerSession = PowerSession(datetime.fromtimestamp(0), datetime.fromtimestamp(0), 0, 0, 0, 0)
-thisDailyStats = PowerDailyStatistics(datetime.now().date(), 0, 0)
+thisDailyStats = PowerDailyStatistics(datetime.now().date(), 0, 0, 0)
 
 skipSleep = 0
 while True:
@@ -250,6 +252,7 @@ while True:
         thisDailyStats.date = currentDate
         thisDailyStats.accumulatedCost = 0
         thisDailyStats.accumulatedPoweronSeconds = 0
+        thisDailyStats.accumulatedEnergy = 0
 
     currentTemperature = getTemperature(philipsHueSensorName)
     if currentTemperature is None:
